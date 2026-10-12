@@ -427,6 +427,42 @@
         padding: 14px;
       }
 
+      .btn-alt {
+        display: block;
+        width: 100%;
+        margin-top: 10px;
+        padding: 12px;
+        font: inherit;
+        font-weight: 700;
+        font-size: 0.92rem;
+        color: var(--dark-1);
+        background: none;
+        border: 2px solid var(--green-btn-b);
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .btn-alt:hover {
+        background: rgba(0, 255, 136, 0.12);
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+        transform: none;
+      }
+      .status {
+        margin-top: 14px;
+        font-size: 0.9rem;
+        text-align: center;
+        min-height: 1.2em;
+      }
+      .status.ok {
+        color: #0a7d44;
+        font-weight: 700;
+      }
+      .status.ko {
+        color: #c62828;
+      }
       footer {
         background: var(--black);
         color: rgba(255, 255, 255, 0.7);
@@ -777,7 +813,26 @@
             <textarea id="desc" name="desc" required></textarea>
             <div class="err" id="e-desc"></div>
 
-            <button type="submit" class="btn">Envoyer vers WhatsApp</button>
+            <input
+              type="checkbox"
+              name="botcheck"
+              id="botcheck"
+              tabindex="-1"
+              autocomplete="off"
+              style="display: none"
+            />
+            <button type="submit" class="btn" id="send">
+              Envoyer par email
+            </button>
+            <button type="button" class="btn-alt" id="wa">
+              Ou écrire sur WhatsApp
+            </button>
+            <div
+              class="status"
+              id="status"
+              role="status"
+              aria-live="polite"
+            ></div>
           </form>
         </div>
       </section>
@@ -836,8 +891,13 @@
         }, 5000);
       }
 
-      // Formulaire → WhatsApp
-      const form = document.getElementById("form");
+      // Formulaire → email (Web3Forms) ou WhatsApp
+      // ⚠️ Colle ici la clé d'accès reçue par email après inscription sur web3forms.com
+      const WEB3FORMS_KEY = "8528b61b-b1f4-4d8a-b567-b30792688780";
+
+      const form = document.getElementById("form"),
+        statusEl = document.getElementById("status"),
+        sendBtn = document.getElementById("send");
       const rules = {
         nom: (v) => v.trim().length >= 2 || "Entre ton nom complet.",
         email: (v) =>
@@ -848,8 +908,7 @@
           v.trim().length >= 10 ||
           "Décris ton projet en quelques mots (10 caractères minimum).",
       };
-      form.addEventListener("submit", (e) => {
-        e.preventDefault();
+      function validate() {
         let ok = true;
         for (const k in rules) {
           const el = form.elements[k],
@@ -861,13 +920,71 @@
             ok = false;
           }
         }
-        if (!ok) return;
+        return ok;
+      }
+      function setStatus(msg, cls) {
+        statusEl.textContent = msg;
+        statusEl.className = "status " + (cls || "");
+      }
+      function openWhatsApp() {
         const msg = `Bonjour Tomorrow Tech 👋\n\n*Nom :* ${form.nom.value.trim()}\n*Email :* ${form.email.value.trim()}\n*Type de projet :* ${form.type.value}\n*Description :* ${form.desc.value.trim()}`;
         window.open(
           `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`,
           "_blank",
           "noopener",
         );
+      }
+
+      document.getElementById("wa").addEventListener("click", () => {
+        if (validate()) openWhatsApp();
+      });
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!validate()) return;
+        // Tant que la clé n'est pas renseignée, on garde WhatsApp comme solution de secours
+        if (WEB3FORMS_KEY.startsWith("COLLE")) {
+          openWhatsApp();
+          return;
+        }
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Envoi en cours…";
+        setStatus("");
+        try {
+          const res = await fetch("https://api.web3forms.com/submit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              access_key: WEB3FORMS_KEY,
+              subject: "Nouveau projet - Tomorrow Tech",
+              from_name: "Site Tomorrow Tech",
+              name: form.nom.value.trim(),
+              email: form.email.value.trim(),
+              "Type de projet": form.type.value,
+              message: form.desc.value.trim(),
+              botcheck: form.botcheck.checked,
+            }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            form.reset();
+            setStatus(
+              "✅ Message envoyé ! Nous te répondrons très vite.",
+              "ok",
+            );
+          } else throw new Error(data.message || "Erreur");
+        } catch (err) {
+          setStatus(
+            "Envoi impossible pour le moment. Réessaie, ou écris-nous sur WhatsApp.",
+            "ko",
+          );
+        } finally {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "Envoyer par email";
+        }
       });
     </script>
   </body>
